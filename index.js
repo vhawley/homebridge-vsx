@@ -13,10 +13,16 @@ module.exports = function(homebridge) {
 };
 
 const volumeMap = {
-  VolumeUp: "VU",
-  VolumeDown: "VD",
+  VolumeUpRequest: "VU",
+  VolumeDownRequest: "VD",
+  VolumeResponse: "VOL",
   QueryVolume: "?V",
-  MuteOnOff: "MZ"
+  QeuryMute: "?M",
+  MuteOnOff: "MZ",
+  MuteOnRequest: "MO",
+  MuteOffRequest: "MF",
+  MuteOnResponse: "MUT0",
+  MuteOffResponse: "MUT1",
 };
 
 const powerMap = {
@@ -149,10 +155,6 @@ function VSXReceiverAccessory(log, config) {
   this.enabledServices.push(this.tvService);
 }
 
-VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
-  console.log("volume", newValue);
-};
-
 VSXReceiverAccessory.prototype.getInput = async function(callback) {
   const self = this;
   self.log('Query Input on ' + self.HOST + ':' + self.PORT);
@@ -190,40 +192,96 @@ VSXReceiverAccessory.prototype.setInput = function(newValue, callback) {
   callback();
 };
 
-VSXReceiverAccessory.prototype.setVolumeSwitch = function(newValue, callback) {
-  console.log("setVolumeSwitch", newValue);
-  
+VSXReceiverAccessory.prototype.setVolumeSwitch = function(down, callback) {  
   const self = this;
 
-  callback("not implemented");
+  if (down) {
+    self.client.write(volumeMap.VolumeDown + '\r\n');
+  }
+  
+  if (!down) {
+    self.client.write(volumeMap.VolumeUp + '\r\n');
+  }
+
+  callback();
 };
 
-VSXReceiverAccessory.prototype.getMuteState = function(newValue, callback) {
-  console.log("getMuteState", newValue);
-  
+VSXReceiverAccessory.prototype.getMuteState = function(callback) {  
   const self = this;
+  self.log('Query Mute Status on ' + self.HOST + ':' + self.PORT);
 
-  callback("not implemented");
+  self.client.write(powerMap.QueryMute + '\r\n');
+
+  self.client.on('data', function muteReceive(data) {
+    self.log('Mute query received data: ' + data);
+
+    var str = data.toString();
+
+    if (str.includes(powerMap.MuteOffResponse)) {
+      self.log("Mute is off");
+      
+      // return true for mute off, false for mute on
+      callback(null, true);
+      self.client.removeListener('data', muteReceive);
+    } else if (str.includes(powerMap.MuteOnResponse)) {
+      self.log("Mute is on");
+      
+      // return true for mute off, false for mute on
+      callback(null, false);
+      self.client.removeListener('data', muteReceive);
+    } else {
+      self.log("waiting");
+    }
+  });
 };
 
-VSXReceiverAccessory.prototype.setMuteState = function(newValue, callback) {
-  console.log("setMuteState", newValue);
+VSXReceiverAccessory.prototype.setMuteState = function(off, callback) {
+  console.log("setMuteState", off);
   
   const self = this;
 
-  callback("not implemented");
+  if (off) {
+    self.client.write(volumeMap.MuteOffRequest + '\r\n');
+  }
+  
+  if (!off) {
+    self.client.write(volumeMap.MuteOnRequest + '\r\n');
+  }
+
+  callback();
 };
 
 VSXReceiverAccessory.prototype.getVolume = function(newValue, callback) {
   console.log("getVolume", newValue);
   
   const self = this;
+  self.log('Query Volume Status on ' + self.HOST + ':' + self.PORT);
 
-  callback("not implemented");
+  self.client.write(powerMap.QueryVolume + '\r\n');
+
+  self.client.on('data', function volumeReceive(data) {
+    self.log('Volume query received data: ' + data);
+
+    var str = data.toString();
+
+    if (str.includes(powerMap.VolumeResponse)) {
+      // extract just the data we need and convert to int
+      var volume = parseInt(str.replace(powerMap.VolumeResponse, ""));
+
+      if (!isNaN(volume)) {
+        self.log("VSX Reported Volume " + volume);      
+        callback(null, volume);
+        self.client.removeListener('data', volumeReceive);
+      }
+    } else {
+      self.log("waiting");
+    }
+  });
+
 };
 
 VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
-//  console.log("setVolume", newValue);
+  console.log("setVolume", newValue);
   
   const self = this;
 
