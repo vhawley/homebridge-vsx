@@ -194,13 +194,14 @@ VSXReceiverAccessory.prototype.setInput = function(newValue, callback) {
 
 VSXReceiverAccessory.prototype.setVolumeSwitch = function(down, callback) {  
   const self = this;
+  self.log("Volume Switch", down ? "Down" : "Up");
 
   if (down) {
-    self.client.write(volumeMap.VolumeDown + '\r\n');
+    self.client.write(volumeMap.VolumeDownRequest + '\r\n');
   }
   
   if (!down) {
-    self.client.write(volumeMap.VolumeUp + '\r\n');
+    self.client.write(volumeMap.VolumeUpRequest + '\r\n');
   }
 
   callback();
