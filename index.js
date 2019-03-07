@@ -50,47 +50,53 @@ function VSXReceiverAccessory(log, config) {
 
   // setup inputMap here because Characteristic is now defined
   inputMap = {
-    DVD: {
-      id: "DVD",
-      name: "DVD",
-      number: 6,
-      type: Characteristic.InputSourceType.COMPONENT_VIDEO,
-      telnetCode: "04FN"
-    },
-    HDMI1: {
+    1: {
       id: "HDMI1",
       name: "HDMI 1",
       number: 1,
       type: Characteristic.InputSourceType.HDMI,
-      telnetCode: "19FN"
+      telnetRequestCode: "19FN",
+      telnetResponseCode: "FN19"
     },
-    HDMI2: {
+    2: {
       id: "HDMI2",
       name: "HDMI 2",
       number: 2,
       type: Characteristic.InputSourceType.HDMI,
-      telnetCode: "20FN"
+      telnetRequestCode: "20FN",
+      telnetResponseCode: "FN20"
     },
-    HDMI3: {
+    3: {
       id: "HDMI3",
       name: "HDMI 3",
       number: 3,
       type: Characteristic.InputSourceType.HDMI,
-      telnetCode: "21FN"
+      telnetRequestCode: "21FN",
+      telnetResponseCode: "FN21"
     },
-    HDMI4: {
+    4: {
       id: "HDMI4",
       name: "HDMI 4",
       number: 4,
       type: Characteristic.InputSourceType.HDMI,
-      telnetCode: "22FN"
+      telnetRequestCode: "22FN",
+      telnetResponseCode: "FN22"
     },
-    HDMI5: {
+    5: {
       id: "HDMI5",
       name: "HDMI 5",
       number: 5,
       type: Characteristic.InputSourceType.HDMI,
-      telnetCode: "23FN"
+      telnetRequestCode: "23FN",
+      telnetResponseCode: "FN23"
+    },
+    6: {
+      id: "DVD",
+      name: "DVD",
+      number: 6,
+      type: Characteristic.InputSourceType.COMPONENT_VIDEO,
+      telnetRequestCode: "04FN",
+      telnetResponseCode: "FN04"
     }
   };
 
@@ -148,13 +154,8 @@ VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
   console.log("volume", newValue);
 };
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-
 VSXReceiverAccessory.prototype.getInput = async function(callback) {
-  const self= this;
+  const self = this;
   self.log('Query Input on ' + self.HOST + ':' + self.PORT);
 
   self.client.write(powerMap.QueryInput + '\r\n');
@@ -165,45 +166,41 @@ VSXReceiverAccessory.prototype.getInput = async function(callback) {
     var str = data.toString();
 
     for (var key of Object.keys(inputMap)) { // have to iterate and check using 'includes' because messages can contain garbage data
-      if (str.includes(inputMap[key].telnetCode)) {
+      if (str.includes(inputMap[key].telnetResponseCode)) {
         self.log("Input is: " + inputMap[key].name + " (" + inputMap[key].number + ")");
         callback(null, inputMap[key].number);
         self.client.removeListener('data', inputReceive);
-        self.log(self.client.listeners('data'));
+        return;
       }
     }
-    callback(null, 0);
+    if (str.includes("FN")) { // input message, but unsuppoerted
+      callback(null, 0);
+      self.client.removeListener('data', inputReceive);
+    }
   });
 };
 
 VSXReceiverAccessory.prototype.setInput = function(newValue, callback) {
   console.log("input", newValue);
   
-  const self= this;
+  const self = this;
 
-  const message = inputMap[newValue].telnetCode;
-  self.client.connect(self.PORT, self.HOST, function () {
-    self.log('Setting input to ' + newValue);
-    self.client.write(message + '\r\n');
-  });
+  const message = inputMap[newValue].telnetRequestCode;
+  self.log('Setting input to ' + newValue);
+  self.client.write(message + '\r\n');
   callback();
 };
 
 VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
   console.log("input", newValue);
   
-  const self= this;
+  const self = this;
 
-  const message = inputMap[newValue].telnetCode;
-  self.client.connect(self.PORT, self.HOST, function () {
-    self.log('Setting input to ' + newValue);
-    self.client.write(message + '\r\n');
-  });
-  callback();
+  callback("not implemented");
 };
 
 VSXReceiverAccessory.prototype.getPowerState = function(callback) {
-  const self= this;
+  const self = this;
   self.log('Query Power Status on ' + self.HOST + ':' + self.PORT);
 
   self.client.write(powerMap.QueryPower + '\r\n');
@@ -218,15 +215,12 @@ VSXReceiverAccessory.prototype.getPowerState = function(callback) {
       
       callback(null, false);
       self.client.removeListener('data', powerReceive);
-      self.log(self.client.listeners('data'));
 
     } else if (str.includes(powerMap.PowerOnResponse)) {
       self.log("Power is On");
       
       callback(null, true);
       self.client.removeListener('data', powerReceive);
-      self.log(self.client.listeners('data'));
-
     } else {
       self.log("waiting");
     }
@@ -234,6 +228,8 @@ VSXReceiverAccessory.prototype.getPowerState = function(callback) {
 };
 
 VSXReceiverAccessory.prototype.setPowerState = function(on, callback) {
+  const self = this;
+
   if (on) {
     self.client.write(powerMap.PowerOnRequest + '\r\n');
   }
