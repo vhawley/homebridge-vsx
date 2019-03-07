@@ -128,26 +128,25 @@ function VSXReceiverAccessory(log, config) {
   }
 
   // setup volume control
-  this.speakerService = new Service.TelevisionSpeaker(
-    this.name + " Volume",
-    "volumeService"
-  );
+  this.tvSpeakerService = new Service.TelevisionSpeaker(this.name + ' Volume', 'volumeService');
+  this.tvSpeakerService
+      .setCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE)
+      .setCharacteristic(Characteristic.VolumeControlType, Characteristic.VolumeControlType.ABSOLUTE);
+  this.tvSpeakerService
+      .getCharacteristic(Characteristic.VolumeSelector)
+      .on('set', this.setVolumeSwitch.bind(this));
+  this.tvSpeakerService
+      .getCharacteristic(Characteristic.Mute)
+      .on('get', this.getMuteState.bind(this))
+      .on('set', this.setMuteState.bind(this));
+  this.tvSpeakerService
+      .addCharacteristic(Characteristic.Volume)
+      .on('get', this.getVolume.bind(this))
+      .on('set', this.setVolume.bind(this));
 
-  this.speakerService
-    .setCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE)
-    .setCharacteristic(
-      Characteristic.VolumeControlType,
-      Characteristic.VolumeControlType.RELATIVE_WITH_CURRENT
-    );
-
-  this.speakerService
-    .getCharacteristic(Characteristic.VolumeSelector)
-    .on("set", this.setVolume.bind(this));
-
-  this.tvService.addLinkedService(this.speakerService);
-
+  this.tvService.addLinkedService(this.tvSpeakerService);
+  this.enabledServices.push(this.tvSpeakerService);
   this.enabledServices.push(this.tvService);
-  this.enabledServices.push(this.speakerService);
 }
 
 VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
@@ -191,8 +190,40 @@ VSXReceiverAccessory.prototype.setInput = function(newValue, callback) {
   callback();
 };
 
+VSXReceiverAccessory.prototype.setVolumeSwitch = function(newValue, callback) {
+  console.log("setVolumeSwitch", newValue);
+  
+  const self = this;
+
+  callback("not implemented");
+};
+
+VSXReceiverAccessory.prototype.getMuteState = function(newValue, callback) {
+  console.log("getMuteState", newValue);
+  
+  const self = this;
+
+  callback("not implemented");
+};
+
+VSXReceiverAccessory.prototype.setMuteState = function(newValue, callback) {
+  console.log("setMuteState", newValue);
+  
+  const self = this;
+
+  callback("not implemented");
+};
+
+VSXReceiverAccessory.prototype.getVolume = function(newValue, callback) {
+  console.log("getVolume", newValue);
+  
+  const self = this;
+
+  callback("not implemented");
+};
+
 VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
-  console.log("input", newValue);
+//  console.log("setVolume", newValue);
   
   const self = this;
 
