@@ -1,7 +1,7 @@
 {
-  "name": "homebridge-sony-television",
+  "name": "homebridge-vsx-receiver",
   "version": "0.0.4",
-  "description": "HomeKit TV for Sony Bravia TV",
+  "description": "HomeKit TV for VSX Receivers",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -12,10 +12,10 @@
   "engines": {
     "homebridge": ">=0.4.46"
   },
-  "author": "Arni Fannar",
+  "author": "Victor Hawley",
   "license": "ISC",
   "dependencies": {
     "request": "^2.88.0",
-    "sony-bravia-tv-remote-v2": "^2.0.0"
+    "net": ""
   }
 }

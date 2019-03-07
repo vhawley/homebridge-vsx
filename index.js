@@ -1,56 +1,98 @@
-var BraviaRemoteControl = require("sony-bravia-tv-remote-v2");
-var request = require("request");
-var Service, Characteristic, VolumeCharacteristic;
-
-const inputMap = {
-  1: "Hdmi1",
-  2: "Hdmi2",
-  3: "Hdmi3",
-  4: "Hdmi4",
-  5: "Netflix"
-};
-
-const tvRemoteMap = {
-  4: "Up",
-  7: "Right",
-  5: "Down",
-  6: "Left",
-  8: "Confirm",
-  11: "Play/Pause",
-  9: "Exit",
-  10: "Exit", // TODO....
-  15: "Home" // TODO...
-};
-
-const volumeMap = {
-  0: "VolumeUp",
-  1: "VolumeDown"
-};
+var Service, Characteristic, inputMap, reverseInputMap, client;
+var net = require("net");
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
 
   homebridge.registerAccessory(
-    "homebridge-sony-television",
-    "Sony-Television",
-    SonyBraviaTvAccessory
+    "homebridge-vsx-receiver",
+    "VSX-Receiver",
+    VSXReceiverAccessory
   );
 };
 
-function SonyBraviaTvAccessory(log, config) {
-  this.log = log;
-  this.config = config;
-  this.name = config["name"];
-  this.psk = config["presharedkey"];
-  this.ipaddress = config["ipaddress"];
-  this.port = config["port"];
+const volumeMap = {
+  VolumeUp: "VU",
+  VolumeDown: "VD",
+  QueryVolume: "?V",
+  MuteOnOff: "MZ"
+};
 
-  this.remote = new BraviaRemoteControl(this.ipaddress, this.port, this.psk);
+const powerMap = {
+  PowerOffRequest: "PF",
+  PowerOnRequest: "PO",
+  PowerOffResponse: "PWR1",
+  PowerOnResponse: "PWR0",
+  QueryPower: "?P",
+  QueryInput: "?F"
+}
+
+function VSXReceiverAccessory(log, config) {
+  this.log = log;
+  this.name = config.name;
+  this.HOST = config.ip;
+  this.PORT = config.port;
 
   this.enabledServices = [];
 
   this.isOn = false;
+
+  // setup client because VSX receivers only support one connection
+  this.client = new net.Socket();
+  var self = this;
+  this.client.on('error', function (ex) {
+    self.log("Received an error while communicating" + ex);
+  });
+  this.client.connect(self.PORT, self.HOST, function () {
+    self.log("Connected to " + self.name);
+  });
+
+  // setup inputMap here because Characteristic is now defined
+  inputMap = {
+    DVD: {
+      id: "DVD",
+      name: "DVD",
+      number: 6,
+      type: Characteristic.InputSourceType.COMPONENT_VIDEO,
+      telnetCode: "04FN"
+    },
+    HDMI1: {
+      id: "HDMI1",
+      name: "HDMI 1",
+      number: 1,
+      type: Characteristic.InputSourceType.HDMI,
+      telnetCode: "19FN"
+    },
+    HDMI2: {
+      id: "HDMI2",
+      name: "HDMI 2",
+      number: 2,
+      type: Characteristic.InputSourceType.HDMI,
+      telnetCode: "20FN"
+    },
+    HDMI3: {
+      id: "HDMI3",
+      name: "HDMI 3",
+      number: 3,
+      type: Characteristic.InputSourceType.HDMI,
+      telnetCode: "21FN"
+    },
+    HDMI4: {
+      id: "HDMI4",
+      name: "HDMI 4",
+      number: 4,
+      type: Characteristic.InputSourceType.HDMI,
+      telnetCode: "22FN"
+    },
+    HDMI5: {
+      id: "HDMI5",
+      name: "HDMI 5",
+      number: 5,
+      type: Characteristic.InputSourceType.HDMI,
+      telnetCode: "23FN"
+    }
+  };
 
   this.tvService = new Service.Television(this.name, "Television");
 
@@ -68,29 +110,18 @@ function SonyBraviaTvAccessory(log, config) {
 
   this.tvService
     .getCharacteristic(Characteristic.ActiveIdentifier)
-    .on("set", this.setInput.bind(this, inputMap));
+    .on("set", this.setInput.bind(this))
+    .on("get", this.getInput.bind(this));
 
-  this.tvService
-    .getCharacteristic(Characteristic.RemoteKey)
-    .on("set", this.setInput.bind(this, tvRemoteMap));
+  // setup inputs
+  for (var key of Object.keys(inputMap)) {
+    var inputService = createInputSource(inputMap[key].id, inputMap[key].name, inputMap[key].number);
+    this.tvService.addLinkedService(inputService);
+    this.enabledServices.push(inputService);
+    // setup reverseInputMap for receiving input queries
+  }
 
-  this.inputHDMI1Service = createInputSource("hdmi1", "HDMI 1", 1);
-  this.inputHDMI2Service = createInputSource("hdmi2", "HDMI 2", 2);
-  this.inputHDMI3Service = createInputSource("hdmi3", "HDMI 3", 3);
-  this.inputHDMI4Service = createInputSource("hdmi4", "HDMI 4", 4);
-  this.inputNetflixService = createInputSource(
-    "netflix",
-    "Netflix",
-    5,
-    Characteristic.InputSourceType.APPLICATION
-  );
-
-  this.tvService.addLinkedService(this.inputHDMI1Service);
-  this.tvService.addLinkedService(this.inputHDMI2Service);
-  this.tvService.addLinkedService(this.inputHDMI3Service);
-  this.tvService.addLinkedService(this.inputHDMI4Service);
-  this.tvService.addLinkedService(this.inputNetflixService);
-
+  // setup volume control
   this.speakerService = new Service.TelevisionSpeaker(
     this.name + " Volume",
     "volumeService"
@@ -100,85 +131,120 @@ function SonyBraviaTvAccessory(log, config) {
     .setCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE)
     .setCharacteristic(
       Characteristic.VolumeControlType,
-      Characteristic.VolumeControlType.ABSOLUTE
+      Characteristic.VolumeControlType.RELATIVE_WITH_CURRENT
     );
 
   this.speakerService
     .getCharacteristic(Characteristic.VolumeSelector)
-    .on("set", this.setInput.bind(this, volumeMap));
+    .on("set", this.setVolume.bind(this));
 
   this.tvService.addLinkedService(this.speakerService);
 
   this.enabledServices.push(this.tvService);
   this.enabledServices.push(this.speakerService);
-  this.enabledServices.push(this.inputHDMI1Service);
-  this.enabledServices.push(this.inputHDMI2Service);
-  this.enabledServices.push(this.inputHDMI3Service);
-  this.enabledServices.push(this.inputHDMI4Service);
-  this.enabledServices.push(this.inputNetflixService);
 }
 
-SonyBraviaTvAccessory.prototype.setInput = function(map, newValue, callback) {
-  console.log("input", newValue);
-  console.log("map", map);
-  const remoteAction = map[newValue];
-  if (!remoteAction) {
-    callback(null);
-  } else {
-    // TODO check if on before sending command...or not?
-    this.remote.sendAction(remoteAction).then(rr => {
-      //   this.log.debug("rr", rr);
-      callback();
-    });
-  }
+VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
+  console.log("volume", newValue);
 };
 
-SonyBraviaTvAccessory.prototype.getPowerState = function(callback) {
-  request.post(
-    {
-      "Content-Type": "application/json",
-      url: `http://${this.ipaddress}/sony/system`,
-      json: {
-        id: 20,
-        method: "getPowerStatus",
-        version: "1.0",
-        params: [""]
-      }
-    },
-    function(err, httpResponse, response) {
-      if (!response) {
-        callback(null);
-        return;
-      }
-      var result = response.result;
-      if (result.length > 0) {
-        var status = result[0].status;
-        this.isOn = status === "active";
-        callback(null, this.isOn);
-      } else {
-        callback(null, false);
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+VSXReceiverAccessory.prototype.getInput = async function(callback) {
+  const self= this;
+  self.log('Query Input on ' + self.HOST + ':' + self.PORT);
+
+  self.client.write(powerMap.QueryInput + '\r\n');
+  
+  self.client.on('data', function inputReceive(data) {
+    self.log('Input query received data: ' + data);
+
+    var str = data.toString();
+
+    for (var key of Object.keys(inputMap)) { // have to iterate and check using 'includes' because messages can contain garbage data
+      if (str.includes(inputMap[key].telnetCode)) {
+        self.log("Input is: " + inputMap[key].name + " (" + inputMap[key].number + ")");
+        callback(null, inputMap[key].number);
+        self.client.removeListener('data', inputReceive);
+        self.log(self.client.listeners('data'));
       }
     }
-  );
+    callback(null, 0);
+  });
 };
 
-SonyBraviaTvAccessory.prototype.setPowerState = function(state, callback) {
-  this.log.debug("state", state);
-  if (state) {
-    this.log.debug("Powering on...");
-    this.remote.sendAction("PowerOn").then(rr => {
-      this.log.debug("rr", rr);
-      callback();
-    });
-  } else {
-    this.log.debug("state false, power off...");
-    this.remote.sendAction("PowerOff").then(rr => {
-      callback();
-    });
+VSXReceiverAccessory.prototype.setInput = function(newValue, callback) {
+  console.log("input", newValue);
+  
+  const self= this;
+
+  const message = inputMap[newValue].telnetCode;
+  self.client.connect(self.PORT, self.HOST, function () {
+    self.log('Setting input to ' + newValue);
+    self.client.write(message + '\r\n');
+  });
+  callback();
+};
+
+VSXReceiverAccessory.prototype.setVolume = function(newValue, callback) {
+  console.log("input", newValue);
+  
+  const self= this;
+
+  const message = inputMap[newValue].telnetCode;
+  self.client.connect(self.PORT, self.HOST, function () {
+    self.log('Setting input to ' + newValue);
+    self.client.write(message + '\r\n');
+  });
+  callback();
+};
+
+VSXReceiverAccessory.prototype.getPowerState = function(callback) {
+  const self= this;
+  self.log('Query Power Status on ' + self.HOST + ':' + self.PORT);
+
+  self.client.write(powerMap.QueryPower + '\r\n');
+
+  self.client.on('data', function powerReceive(data) {
+    self.log('Power query received data: ' + data);
+
+    var str = data.toString();
+
+    if (str.includes(powerMap.PowerOffResponse)) {
+      self.log("Power is Off");
+      
+      callback(null, false);
+      self.client.removeListener('data', powerReceive);
+      self.log(self.client.listeners('data'));
+
+    } else if (str.includes(powerMap.PowerOnResponse)) {
+      self.log("Power is On");
+      
+      callback(null, true);
+      self.client.removeListener('data', powerReceive);
+      self.log(self.client.listeners('data'));
+
+    } else {
+      self.log("waiting");
+    }
+  });
+};
+
+VSXReceiverAccessory.prototype.setPowerState = function(on, callback) {
+  if (on) {
+    self.client.write(powerMap.PowerOnRequest + '\r\n');
   }
+
+  if (!on) {
+    self.client.write(powerMap.PowerOffRequest + '\r\n');
+  }
+  callback();
 };
 
-SonyBraviaTvAccessory.prototype.getServices = function() {
+VSXReceiverAccessory.prototype.getServices = function() {
   return this.enabledServices;
 };
 
