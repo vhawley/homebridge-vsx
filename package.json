@@ -1,6 +1,6 @@
 {
   "name": "homebridge-vsx-receiver",
-  "version": "0.0.4",
+  "version": "0.0.1",
   "description": "HomeKit TV for VSX Receivers",
   "main": "index.js",
   "scripts": {
