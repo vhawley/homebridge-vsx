@@ -48,7 +48,9 @@ function VSXReceiverAccessory(log, config) {
   this.client = new net.Socket();
   var self = this;
   this.client.on('error', function (ex) {
-    self.log("Received an error while communicating" + ex);
+    this.client.connect(self.PORT, self.HOST, function () {
+      self.log("Connected to " + self.name);
+    });
   });
   this.client.connect(self.PORT, self.HOST, function () {
     self.log("Connected to " + self.name);
